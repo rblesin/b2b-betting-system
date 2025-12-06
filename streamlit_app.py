@@ -1,6 +1,14 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import os
+
+# Auto-download NBA data if missing
+if not os.path.exists('nba_completed_games_2025.csv'):
+    with st.spinner("Downloading current NBA season data..."):
+        from scrape_current_nba import scrape_and_save
+        scrape_and_save()
+
 from scraper import HockeyReferenceScraper
 from nba_scraper import NBAESPNScraper
 from analyzer import B2BAnalyzer
