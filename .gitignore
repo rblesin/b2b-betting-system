@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+betting_tracker.json
+nhl_completed_games_2015_2025.csv
+nhl_b2b_games_2015_2025.csv
+nba_completed_games_2015_2025.csv
+nba_b2b_games_2015_2025.csv
+nba_tier_performance_2015_2025.csv
+*.csv

@@ -1,0 +1,497 @@
+import streamlit as st
+from scraper import HockeyReferenceScraper
+from analyzer import B2BAnalyzer
+from betting_tracker import BettingTracker
+from enhanced_analyzer import EnhancedB2BAnalyzer
+from datetime import datetime, timedelta
+import pandas as pd
+import time
+from config import CURRENT_SEASON, CACHE_TTL, UPCOMING_GAMES_DAYS, INITIAL_BANKROLL, TRACKER_FILE, TIERS, KELLY_FRACTIONAL
+
+st.set_page_config(page_title="NHL B2B Betting System", page_icon="🏒", layout="wide")
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_data():
+    with st.spinner('Loading data...'):
+        scraper = HockeyReferenceScraper(season=CURRENT_SEASON)
+        completed_df, upcoming_df = scraper.scrape_all_games()
+        standings = scraper.scrape_standings()
+    
+    with st.spinner('Analyzing...'):
+        analyzer = B2BAnalyzer(completed_df)
+        games_with_rest = analyzer.calculate_rest_days()
+        results = analyzer.analyze_win_rates()
+        team_stats = analyzer.analyze_team_b2b_performance()
+        
+        enhanced = EnhancedB2BAnalyzer(completed_df)
+        enhanced.calculate_team_records()
+        enhanced.calculate_team_streaks()
+    
+    upcoming_b2b = calculate_upcoming_b2b(completed_df, upcoming_df)
+    historical_b2b = analyze_historical_b2b_realtime(completed_df, team_stats, standings)
+    
+    rested_home = results['rested_home_b2b_away']
+    rested_away = results['b2b_home_rested_away']
+    
+    home_wins = rested_home['home_win'].sum() if len(rested_home) > 0 else 0
+    away_wins = len(rested_away) - rested_away['home_win'].sum() if len(rested_away) > 0 else 0
+    total_games = len(rested_home) + len(rested_away)
+    overall_wr = ((home_wins + away_wins) / total_games * 100) if total_games > 0 else 0
+    
+    return {
+        'completed_df': completed_df,
+        'upcoming_df': upcoming_df,
+        'standings': standings,
+        'games_with_rest': games_with_rest,
+        'results': results,
+        'team_stats': team_stats,
+        'upcoming_b2b': upcoming_b2b,
+        'enhanced': enhanced,
+        'overall_wr': overall_wr,
+        'historical_b2b': historical_b2b
+    }
+
+def analyze_historical_b2b_realtime(completed_df, team_stats, standings):
+    """Analyze B2B games using REAL-TIME form (what we knew at the time)"""
+    
+    games_sorted = completed_df.sort_values('date').reset_index(drop=True)
+    last_game = {}
+    results = []
+    
+    for _, game in games_sorted.iterrows():
+        game_date = game['date']
+        home = game['home']
+        away = game['away']
+        
+        home_rest = (game_date - last_game[home]).days if home in last_game else 999
+        away_rest = (game_date - last_game[away]).days if away in last_game else 999
+        
+        home_b2b = home_rest == 1
+        away_b2b = away_rest == 1
+        
+        if (home_b2b and not away_b2b) or (not home_b2b and away_b2b):
+            
+            game_data = {
+                'date': game_date,
+                'home': home,
+                'away': away,
+                'home_rest': home_rest,
+                'away_rest': away_rest,
+                'home_b2b': home_b2b,
+                'away_b2b': away_b2b,
+                'home_win': game['home_win']
+            }
+            
+            enhanced_temp = EnhancedB2BAnalyzer(completed_df[completed_df['date'] < game_date])
+            enhanced_temp.calculate_team_records()
+            enhanced_temp.calculate_team_streaks()
+            
+            rec = enhanced_temp.should_bet(game_data, team_stats, standings)
+            
+            if not home_b2b and away_b2b:
+                rested_team = home
+                rested_won = game['home_win']
+                scenario = "Home rested"
+            else:
+                rested_team = away
+                rested_won = not game['home_win']
+                scenario = "Away rested"
+            
+            results.append({
+                'date': game_date,
+                'home': home,
+                'away': away,
+                'scenario': scenario,
+                'rested_team': rested_team,
+                'rested_won': rested_won,
+                'tier': rec.get('tier'),
+                'would_bet': rec['should_bet'],
+                'win_rate': rec.get('win_rate', 0),
+                'reason': rec.get('reason', 'N/A'),
+                'home_goals': game.get('home_goals'),
+                'away_goals': game.get('away_goals')
+            })
+        
+        last_game[home] = game_date
+        last_game[away] = game_date
+    
+    return pd.DataFrame(results)
+
+def calculate_upcoming_b2b(completed_df, upcoming_df, days_ahead=UPCOMING_GAMES_DAYS):
+    """Calculate B2B games in upcoming schedule"""
+    if len(upcoming_df) == 0:
+        return pd.DataFrame()
+    
+    today = datetime.now().date()
+    cutoff_date = today + timedelta(days=days_ahead)
+    
+    upcoming_next_week = upcoming_df[
+        (upcoming_df['date'] >= today) & 
+        (upcoming_df['date'] <= cutoff_date)
+    ].copy()
+    
+    if len(upcoming_next_week) == 0:
+        return pd.DataFrame()
+    
+    last_game = {}
+    for _, game in completed_df.sort_values('date').iterrows():
+        last_game[game['home']] = game['date']
+        last_game[game['away']] = game['date']
+    
+    upcoming_sorted = upcoming_next_week.sort_values('date')
+    results = []
+    
+    for _, game in upcoming_sorted.iterrows():
+        home = game['home']
+        away = game['away']
+        game_date = game['date']
+        
+        home_rest = (game_date - last_game[home]).days if home in last_game else 999
+        away_rest = (game_date - last_game[away]).days if away in last_game else 999
+        
+        home_b2b = home_rest == 1
+        away_b2b = away_rest == 1
+        
+        if (home_b2b and not away_b2b) or (not home_b2b and away_b2b):
+            results.append({
+                'date': game_date,
+                'home': home,
+                'away': away,
+                'home_rest': home_rest,
+                'away_rest': away_rest,
+                'home_b2b': home_b2b,
+                'away_b2b': away_b2b
+            })
+        
+        last_game[home] = game_date
+        last_game[away] = game_date
+    
+    return pd.DataFrame(results)
+
+try:
+    data = load_data()
+    tracker = BettingTracker(tracker_file=TRACKER_FILE, initial_bankroll=INITIAL_BANKROLL)
+    
+    if len(data['completed_df']) > 0 and 'home_win' in data['completed_df'].columns:
+        merged = data['games_with_rest'].merge(
+            data['completed_df'][['date', 'home', 'away', 'home_win']], 
+            on=['date', 'home', 'away'],
+            how='left',
+            suffixes=('', '_result')
+        )
+        if 'home_win_result' in merged.columns:
+            merged['home_win'] = merged['home_win_result']
+        
+        for _, game in merged.iterrows():
+            if pd.notna(game.get('home_win')):
+                tracker.update_result(game['date'], game['home'], game['away'], game['home_win'])
+    
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    import traceback
+    st.code(traceback.format_exc())
+    st.stop()
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 Dashboard",
+    "🔍 Strategy Analysis",
+    "🎯 Upcoming Games",
+    "⏳ Active Bets",
+    "📜 Bet History"
+])
+
+with tab1:
+    col1, col2, col3, col4 = st.columns(4)
+    
+    pl = tracker.current_bankroll - tracker.initial_bankroll
+    roi = (pl / tracker.initial_bankroll * 100)
+    
+    with col1:
+        delta_color = "normal" if pl >= 0 else "inverse"
+        st.metric("Bankroll", f"${tracker.current_bankroll:.2f}", f"${pl:+.2f}", delta_color=delta_color)
+    
+    with col2:
+        completed = [b for b in tracker.bets if b['result'] != 'pending']
+        wins = len([b for b in completed if b['result'] == 'won'])
+        losses = len([b for b in completed if b['result'] == 'lost'])
+        win_rate = (wins / len(completed) * 100) if len(completed) > 0 else 0
+        st.metric("Win Rate", f"{win_rate:.1f}%", f"{wins}-{losses}")
+    
+    with col3:
+        delta_color = "normal" if roi >= 0 else "inverse"
+        st.metric("ROI", f"{roi:+.1f}%", f"${pl:+.2f}", delta_color=delta_color)
+    
+    with col4:
+        active = [b for b in tracker.bets if b['result'] == 'pending']
+        st.metric("Active Bets", len(active))
+    
+    st.divider()
+    
+    st.subheader("Tier Performance")
+    
+    tier_perf = tracker.get_tier_performance()
+    
+    if len(tier_perf) > 0:
+        for tier in ['S', 'A']:
+            if tier in tier_perf:
+                stats = tier_perf[tier]
+                total = stats['wins'] + stats['losses']
+                wr = (stats['wins'] / total * 100) if total > 0 else 0
+                
+                tier_name = TIERS[tier]['name']
+                tier_criteria = TIERS[tier]['criteria']
+                
+                st.markdown(f"**Tier {tier}: {tier_name}** ({tier_criteria})")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Record", f"{stats['wins']}-{stats['losses']}")
+                with col2:
+                    st.metric("Win Rate", f"{wr:.1f}%")
+                with col3:
+                    st.metric("Profit", f"${stats['profit']:+.2f}")
+    else:
+        st.info("No bets placed yet.")
+
+with tab2:
+    st.header("Strategy Analysis")
+    
+    st.info("💡 Shows what the strategy recommended at the time of each game (using real-time form data)")
+    
+    hist_df = data['historical_b2b']
+    
+    if len(hist_df) == 0:
+        st.info("No historical B2B games yet.")
+    else:
+        st.markdown("### Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total_games = len(hist_df)
+            st.metric("Total B2B Games", total_games)
+        
+        with col2:
+            rested_wins = hist_df['rested_won'].sum()
+            rested_wr = (rested_wins / total_games * 100)
+            st.metric("Rested Team Wins", f"{rested_wr:.1f}%", f"{rested_wins}/{total_games}")
+        
+        with col3:
+            would_bet = hist_df['would_bet'].sum()
+            st.metric("Strategy Bet", f"{would_bet} games")
+        
+        with col4:
+            if would_bet > 0:
+                strategy_wins = hist_df[hist_df['would_bet']]['rested_won'].sum()
+                strategy_wr = (strategy_wins / would_bet * 100)
+                st.metric("Strategy Win Rate", f"{strategy_wr:.1f}%", f"{strategy_wins}/{would_bet}")
+        
+        st.markdown("### Tier Breakdown")
+        
+        for tier_id in ['S', 'A']:
+            tier_games = hist_df[hist_df['tier'] == tier_id]
+            
+            if len(tier_games) > 0:
+                tier_wins = tier_games['rested_won'].sum()
+                tier_total = len(tier_games)
+                tier_wr = (tier_wins / tier_total * 100)
+                
+                with st.expander(f"**Tier {tier_id}**: {tier_total} games - {tier_wr:.1f}% win rate"):
+                    for _, game in tier_games.iterrows():
+                        result = "✅" if game['rested_won'] else "❌"
+                        score = f"{game['away_goals']}-{game['home_goals']}" if pd.notna(game['home_goals']) else "?"
+                        
+                        st.write(f"{result} {game['date'].strftime('%m/%d')}: {game['away']} @ {game['home']} ({score}) - Pick: {game['rested_team']}")
+        
+        st.markdown("### Filters")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            show_tier = st.multiselect("Filter by Tier", ['S', 'A', None], default=['S', 'A', None])
+        
+        with col2:
+            show_result = st.radio("Show", ["All", "Wins Only", "Losses Only"])
+        
+        with col3:
+            show_strategy = st.radio("Strategy", ["All Games", "Bet", "Skipped"])
+        
+        filtered_df = hist_df.copy()
+        
+        if show_tier:
+            filtered_df = filtered_df[filtered_df['tier'].isin(show_tier)]
+        
+        if show_result == "Wins Only":
+            filtered_df = filtered_df[filtered_df['rested_won'] == True]
+        elif show_result == "Losses Only":
+            filtered_df = filtered_df[filtered_df['rested_won'] == False]
+        
+        if show_strategy == "Bet":
+            filtered_df = filtered_df[filtered_df['would_bet'] == True]
+        elif show_strategy == "Skipped":
+            filtered_df = filtered_df[filtered_df['would_bet'] == False]
+        
+        st.markdown(f"### Game Log ({len(filtered_df)} games)")
+        
+        for _, game in filtered_df.sort_values('date', ascending=False).iterrows():
+            result_icon = "✅" if game['rested_won'] else "❌"
+            tier_label = f"Tier {game['tier']}" if game['tier'] else "No Tier"
+            bet_icon = "💰" if game['would_bet'] else "⏭️"
+            score = f"{game['away_goals']}-{game['home_goals']}" if pd.notna(game['home_goals']) else "?"
+            
+            col1, col2, col3 = st.columns([1, 3, 1])
+            
+            with col1:
+                st.write(f"{result_icon} {bet_icon}")
+            
+            with col2:
+                st.write(f"**{game['date'].strftime('%m/%d')}**: {game['away']} @ {game['home']} ({score})")
+                st.caption(f"{tier_label} - Pick: {game['rested_team']} ({game['scenario']})")
+            
+            with col3:
+                if game['would_bet']:
+                    st.caption(f"{game['win_rate']:.0f}% edge")
+                else:
+                    st.caption("Skip")
+
+with tab3:
+    st.header(f"Upcoming Games (Next {UPCOMING_GAMES_DAYS} Days)")
+    
+    st.info("💡 **Note:** Recommendations update dynamically as games are played and team form changes. Always refresh before betting!")
+    
+    if len(data['upcoming_b2b']) == 0:
+        st.info(f"No B2B games with rest advantage in next {UPCOMING_GAMES_DAYS} days.")
+    else:
+        bettable_games = []
+        
+        for idx, game in data['upcoming_b2b'].iterrows():
+            rec = data['enhanced'].should_bet(game, data['team_stats'], data['standings'])
+            
+            if rec['should_bet']:
+                bettable_games.append((idx, game, rec))
+        
+        if len(bettable_games) == 0:
+            st.warning("No games meet tier criteria. Check back after more games are played!")
+        else:
+            for game_num, (idx, game, rec) in enumerate(bettable_games, 1):
+                tier = rec['tier']
+                tier_info = TIERS[tier]
+                
+                already_bet = any(
+                    bet['date'] == str(game['date']) and bet['home'] == game['home']
+                    for bet in tracker.bets
+                )
+                
+                # Get ACTUAL tier performance
+                tier_perf = tracker.get_tier_performance()
+                actual_tier_wr = 0
+                if tier in tier_perf:
+                    tier_stats = tier_perf[tier]
+                    total = tier_stats['wins'] + tier_stats['losses']
+                    actual_tier_wr = (tier_stats['wins'] / total * 100) if total > 0 else 0
+                
+                with st.container():
+                    st.markdown(f"### Game #{game_num}: Tier {tier} - {rec['tier_name']}")
+                    
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.markdown(f"**{game['away']} @ {game['home']}**")
+                        st.caption(f"📅 {game['date'].strftime('%A, %B %d')}")
+                        st.markdown(f"**Pick: {rec['pick']}**")
+                    
+                    with col2:
+                        if rec['confidence'] == 'ELITE':
+                            st.success(f"🏆 {rec['confidence']}")
+                        elif rec['confidence'] == 'HIGH':
+                            st.info(f"🔥 {rec['confidence']}")
+                        else:
+                            st.warning(f"✅ {rec['confidence']}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        bet_size = tracker.calculate_kelly_bet(actual_tier_wr if actual_tier_wr > 0 else 70)
+                        st.metric("Kelly Bet Size", f"${bet_size:.2f}")
+                    with col2:
+                        if actual_tier_wr > 0:
+                            st.metric("Your Tier Win Rate", f"{actual_tier_wr:.1f}%")
+                        else:
+                            st.metric("Tier", f"{tier} - {tier_info['name']}")
+                    
+                    st.caption(f"✅ {rec['reason']}")
+                    
+                    if not already_bet:
+                        if st.button(f"➕ Add Bet", key=f"add_{idx}"):
+                            success = tracker.add_bet(
+                                date=game['date'],
+                                home=game['home'],
+                                away=game['away'],
+                                pick=rec['pick'],
+                                edge_pct=actual_tier_wr if actual_tier_wr > 0 else 70,
+                                reason=rec['reason'],
+                                tier=tier
+                            )
+                            if success:
+                                st.success("✅ Bet added!")
+                                time.sleep(1)
+                                st.rerun()
+                    else:
+                        st.warning("Already bet")
+                    
+                    st.divider()
+
+with tab4:
+    st.header("Active Bets")
+    
+    active = [b for b in tracker.bets if b['result'] == 'pending']
+    
+    if len(active) == 0:
+        st.info("No active bets.")
+    else:
+        for bet in active:
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                tier = bet.get('tier', '?')
+                st.write(f"⏳ **Tier {tier}** - {bet['away']} @ {bet['home']}")
+                st.caption(f"{bet['date']} - Pick: {bet['pick']}")
+            
+            with col2:
+                st.write(f"${bet['bet_amount']:.2f}")
+            
+            with col3:
+                potential_profit = bet['bet_amount'] * (bet.get('odds', 2.0) - 1)
+                st.caption(f"Win: +${potential_profit:.2f}")
+
+with tab5:
+    st.header("Bet History")
+    
+    completed = [b for b in tracker.bets if b['result'] != 'pending']
+    
+    if len(completed) == 0:
+        st.info("No completed bets yet.")
+    else:
+        for bet in completed[::-1]:
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                status = "✅" if bet['result'] == 'won' else "❌"
+                tier = bet.get('tier', '?')
+                st.write(f"{status} **Tier {tier}** - {bet['away']} @ {bet['home']}")
+                st.caption(f"{bet['date']} - Pick: {bet['pick']}")
+            
+            with col2:
+                st.write(f"${bet['bet_amount']:.2f}")
+            
+            with col3:
+                if bet['result'] == 'won':
+                    st.markdown(f":green[+${bet['profit']:.2f}]")
+                else:
+                    st.markdown(f":red[${bet['profit']:.2f}]")
+
+st.divider()
+st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Season: {CURRENT_SEASON}")
+
+if st.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
