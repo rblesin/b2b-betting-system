@@ -3,11 +3,13 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# Auto-download NBA data if missing
+st.set_page_config(page_title="B2B Betting System", page_icon="🎯", layout="wide")
+
+# Auto-download NBA data if missing (before other imports)
 if not os.path.exists('nba_completed_games_2025.csv'):
     with st.spinner("Downloading current NBA season data..."):
-        from scrape_current_nba import scrape_and_save
-        scrape_and_save()
+        import scrape_current_nba
+        scrape_current_nba.scrape_and_save()
 
 from scraper import HockeyReferenceScraper
 from nba_scraper import NBAESPNScraper
@@ -16,8 +18,6 @@ from enhanced_analyzer import EnhancedB2BAnalyzer
 from nba_analyzer import NBAB2BAnalyzer
 from betting_tracker import BettingTracker
 from config import *
-
-st.set_page_config(page_title="B2B Betting System", page_icon="🎯", layout="wide")
 
 # Initialize
 @st.cache_data(ttl=CACHE_TTL)
@@ -124,8 +124,6 @@ with tab1:
     
     # Sport Performance
     st.subheader("🏆 Performance by Sport")
-    
-    sport_perf = tracker.get_sport_performance()
     
     if sport_perf:
         cols = st.columns(2)
