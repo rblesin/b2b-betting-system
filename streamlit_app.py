@@ -101,7 +101,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 # TAB 1: Dashboard
 with tab1:
-    st.header("🎯 B2B Betting System - Multi-Sport")
     
     # Top metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -235,13 +234,8 @@ with tab2:
                     rec = nhl_enhanced.should_bet(game_data, nhl_team_stats, nhl_standings)
                     
                     if rec['should_bet']:
-                        tier_perf = tracker.get_tier_performance(sport='NHL')
-                        if rec['tier'] in tier_perf:
-                            stats = tier_perf[rec['tier']]
-                            total = stats['wins'] + stats['losses']
-                            actual_wr = (stats['wins'] / total * 100) if total > 0 else TIERS[rec['tier']]['nhl_historical_wr']
-                        else:
-                            actual_wr = TIERS[rec['tier']]['nhl_historical_wr']
+                        # Use historical WR (don't let live results inflate expectations)
+                        actual_wr = TIERS[rec['tier']]['nhl_historical_wr']
                         
                         bet_size = tracker.calculate_kelly_bet(actual_wr)
                         
@@ -297,13 +291,8 @@ with tab2:
                     rec = nba_enhanced.should_bet(game_data, {}, nba_standings)
                     
                     if rec['should_bet']:
-                        tier_perf = tracker.get_tier_performance(sport='NBA')
-                        if rec['tier'] in tier_perf:
-                            stats = tier_perf[rec['tier']]
-                            total = stats['wins'] + stats['losses']
-                            actual_wr = (stats['wins'] / total * 100) if total > 0 else TIERS[rec['tier']]['nba_historical_wr']
-                        else:
-                            actual_wr = TIERS[rec['tier']]['nba_historical_wr']
+                        # Use historical WR (don't let live results inflate expectations)
+                        actual_wr = TIERS[rec['tier']]['nba_historical_wr']
                         
                         bet_size = tracker.calculate_kelly_bet(actual_wr)
                         
