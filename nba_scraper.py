@@ -8,7 +8,7 @@ class NBAESPNScraper:
         self.base_url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
     
     def scrape_upcoming_games(self, days=30):
-        """Scrape upcoming NBA games"""
+        """Scrape upcoming NBA games with B2B calculations"""
         print(f"Scraping NBA upcoming games (next {days} days)...")
         
         all_games = []
@@ -68,32 +68,48 @@ class NBAESPNScraper:
             completed_df = pd.read_csv('nba_completed_games_2025.csv')
             completed_df['date'] = pd.to_datetime(completed_df['date']).dt.date
             
-            # Combine for rest calculation
-            all_games_df = pd.concat([completed_df, df]).sort_values('date')
+            # Combine completed + upcoming for rest calculation
+            all_games_combined = pd.concat([
+                completed_df[['date', 'home', 'away']],
+                df[['date', 'home', 'away']]
+            ]).sort_values('date').reset_index(drop=True)
             
             last_game = {}
             
-            for idx in all_games_df.index:
-                home = all_games_df.at[idx, 'home']
-                away = all_games_df.at[idx, 'away']
-                game_date = all_games_df.at[idx, 'date']
+            for idx in all_games_combined.index:
+                home = all_games_combined.at[idx, 'home']
+                away = all_games_combined.at[idx, 'away']
+                game_date = all_games_combined.at[idx, 'date']
                 
                 home_rest = (game_date - last_game[home]).days if home in last_game else 999
                 away_rest = (game_date - last_game[away]).days if away in last_game else 999
                 
-                all_games_df.at[idx, 'home_rest'] = home_rest
-                all_games_df.at[idx, 'away_rest'] = away_rest
-                all_games_df.at[idx, 'home_b2b'] = home_rest == 1
-                all_games_df.at[idx, 'away_b2b'] = away_rest == 1
+                all_games_combined.at[idx, 'home_rest'] = home_rest
+                all_games_combined.at[idx, 'away_rest'] = away_rest
+                all_games_combined.at[idx, 'home_b2b'] = (home_rest == 1)
+                all_games_combined.at[idx, 'away_b2b'] = (away_rest == 1)
                 
                 last_game[home] = game_date
                 last_game[away] = game_date
             
-            # Return only upcoming games
-            df = all_games_df.loc[df.index]
+            # Extract only upcoming games with rest data
+            upcoming_with_rest = all_games_combined[
+                all_games_combined['date'].isin(df['date'])
+            ].copy()
+            
+            # Merge back
+            df = df.merge(
+                upcoming_with_rest[['date', 'home', 'away', 'home_rest', 'away_rest', 'home_b2b', 'away_b2b']],
+                on=['date', 'home', 'away'],
+                how='left'
+            )
         
         except Exception as e:
             print(f"Warning: Could not calculate rest days: {e}")
+            df['home_rest'] = 999
+            df['away_rest'] = 999
+            df['home_b2b'] = False
+            df['away_b2b'] = False
         
         print(f"✅ Found {len(df)} upcoming NBA games")
         
@@ -133,4 +149,13 @@ class NBAESPNScraper:
 if __name__ == "__main__":
     scraper = NBAESPNScraper()
     upcoming = scraper.scrape_upcoming_games(days=7)
-    print(upcoming.head())
+    
+    print("\nUpcoming games with B2B:")
+    if 'home_b2b' in upcoming.columns:
+        b2b_games = upcoming[
+            (upcoming['home_b2b'] == True) | (upcoming['away_b2b'] == True)
+        ]
+        print(f"Found {len(b2b_games)} B2B situations")
+        print(b2b_games[['date', 'away', 'home', 'home_b2b', 'away_b2b']].head(10))
+    else:
+        print("No B2B data")
