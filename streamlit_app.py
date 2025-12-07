@@ -92,9 +92,10 @@ with st.sidebar:
         st.metric("Record", f"{nba['wins']}-{nba['losses']}", f"{(nba['wins']/(nba['wins']+nba['losses'])*100):.1f}% WR")
 
 # Main tabs
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Dashboard", 
-    "🎯 Upcoming Games",
+    "🎯 Upcoming Bets",
+    "📅 All B2B Games",
     "📜 Bet History"
 ])
 
@@ -196,9 +197,9 @@ with tab1:
         - Kelly 25% with $1,000 cap
         """)
 
-# TAB 2: Upcoming Games
+# TAB 2: Upcoming Bets
 with tab2:
-    st.header(f"🎯 Upcoming Games")
+    st.header(f"🎯 Upcoming Bets (Qualifying Games Only)")
     
     sport_tab1, sport_tab2 = st.tabs(["🏒 NHL", "🏀 NBA"])
     
@@ -268,7 +269,7 @@ with tab2:
                 st.dataframe(rec_df, use_container_width=True, hide_index=True)
                 st.success(f"✅ Found {len(recommendations)} NHL qualifying bet(s)!")
             else:
-                st.info("No NHL games meet criteria")
+                st.info("No NHL games meet criteria in next 30 days")
     
     # NBA Upcoming
     with sport_tab2:
@@ -330,10 +331,121 @@ with tab2:
                 st.dataframe(rec_df, use_container_width=True, hide_index=True)
                 st.success(f"✅ Found {len(recommendations)} NBA qualifying bet(s)!")
             else:
-                st.info("No NBA games meet criteria")
+                st.info("No NBA games meet criteria in next 30 days")
 
-# TAB 3: Bet History
+# TAB 3: All B2B Games
 with tab3:
+    st.header("📅 All Back-to-Back Games (Next 30 Days)")
+    st.caption("Shows ALL B2B situations, including those that don't qualify for betting")
+    
+    sport_tab1, sport_tab2 = st.tabs(["🏒 NHL", "🏀 NBA"])
+    
+    # NHL All B2B
+    with sport_tab1:
+        st.subheader("NHL B2B Games")
+        
+        cutoff_date = (datetime.now() + timedelta(days=30)).date()
+        nhl_filtered = nhl_upcoming[nhl_upcoming['date'] <= cutoff_date]
+        
+        all_b2b = []
+        
+        for _, game in nhl_filtered.iterrows():
+            home_rest = game.get('home_rest', 999)
+            away_rest = game.get('away_rest', 999)
+            home_b2b = home_rest == 1
+            away_b2b = away_rest == 1
+            
+            if (home_b2b and not away_b2b) or (not home_b2b and away_b2b):
+                rested_team = game['home'] if not home_b2b else game['away']
+                b2b_team = game['away'] if not home_b2b else game['home']
+                
+                rested_form = nhl_enhanced.team_streaks.get(rested_team, {})
+                b2b_form = nhl_enhanced.team_streaks.get(b2b_team, {})
+                
+                # Check if qualifies
+                game_data = {
+                    'date': game['date'],
+                    'home': game['home'],
+                    'away': game['away'],
+                    'home_rest': home_rest,
+                    'away_rest': away_rest,
+                    'home_b2b': home_b2b,
+                    'away_b2b': away_b2b
+                }
+                
+                rec = nhl_enhanced.should_bet(game_data, nhl_team_stats, nhl_standings)
+                
+                all_b2b.append({
+                    'Date': game['date'].strftime('%Y-%m-%d'),
+                    'Matchup': f"{game['away']} @ {game['home']}",
+                    'Rested': rested_team,
+                    'B2B': b2b_team,
+                    'Rested L5': rested_form.get('last_5', '?'),
+                    'B2B L5': b2b_form.get('last_5', '?'),
+                    'Form Adv': f"+{rested_form.get('last_5_wins', 0) - b2b_form.get('last_5_wins', 0)}",
+                    'Qualifies': '✅ ' + rec['tier'] if rec['should_bet'] else '❌ No',
+                    'Reason': rec['reason']
+                })
+        
+        if all_b2b:
+            b2b_df = pd.DataFrame(all_b2b)
+            st.dataframe(b2b_df, use_container_width=True, hide_index=True, height=600)
+            
+            qualifying = len([x for x in all_b2b if x['Qualifies'].startswith('✅')])
+            st.info(f"📊 {len(all_b2b)} total B2B games | ✅ {qualifying} qualify for betting | ❌ {len(all_b2b)-qualifying} don't qualify")
+        else:
+            st.warning("No B2B games in next 30 days")
+    
+    # NBA All B2B
+    with sport_tab2:
+        st.subheader("NBA B2B Games (Home Rested Only)")
+        st.caption("⚠️ NBA strategy only works for HOME rested teams")
+        
+        all_b2b = []
+        
+        for _, game in nba_upcoming.iterrows():
+            home_b2b = game.get('home_b2b', False)
+            away_b2b = game.get('away_b2b', False)
+            
+            # Show only home rested situations
+            if not home_b2b and away_b2b:
+                rested_form = nba_enhanced.team_streaks.get(game['home'], {})
+                b2b_form = nba_enhanced.team_streaks.get(game['away'], {})
+                
+                # Check if qualifies
+                game_data = {
+                    'date': game['date'],
+                    'home': game['home'],
+                    'away': game['away'],
+                    'home_b2b': home_b2b,
+                    'away_b2b': away_b2b
+                }
+                
+                rec = nba_enhanced.should_bet(game_data, {}, nba_standings)
+                
+                all_b2b.append({
+                    'Date': game['date'].strftime('%Y-%m-%d'),
+                    'Matchup': f"{game['away']} @ {game['home']}",
+                    'Rested': game['home'],
+                    'B2B': game['away'],
+                    'Rested L5': rested_form.get('last_5', '?'),
+                    'B2B L5': b2b_form.get('last_5', '?'),
+                    'Form Adv': f"+{rested_form.get('last_5_wins', 0) - b2b_form.get('last_5_wins', 0)}",
+                    'Qualifies': '✅ ' + rec['tier'] if rec['should_bet'] else '❌ No',
+                    'Reason': rec['reason']
+                })
+        
+        if all_b2b:
+            b2b_df = pd.DataFrame(all_b2b)
+            st.dataframe(b2b_df, use_container_width=True, hide_index=True, height=600)
+            
+            qualifying = len([x for x in all_b2b if x['Qualifies'].startswith('✅')])
+            st.info(f"📊 {len(all_b2b)} total B2B games | ✅ {qualifying} qualify for betting | ❌ {len(all_b2b)-qualifying} don't qualify")
+        else:
+            st.warning("No home-rested B2B games in next 30 days")
+
+# TAB 4: Bet History
+with tab4:
     st.header("📜 Bet History")
     
     completed_bets = [b for b in tracker.bets if b['result'] != 'pending']
