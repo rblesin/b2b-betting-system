@@ -467,8 +467,44 @@
       "result": "lost",
       "profit": -433.48,
       "bankroll_before": 5418.460000000001
+    },
+    {
+      "date": "2025-12-07",
+      "sport": "NHL",
+      "home": "Philadelphia Flyers",
+      "away": "Colorado Avalanche",
+      "pick": "Philadelphia Flyers",
+      "odds": 2.0,
+      "bet_amount": 458.62,
+      "edge_pct": 68.4,
+      "reason": "Tier A",
+      "tier": "A",
+      "form_advantage": 1,
+      "rested_wins": null,
+      "b2b_wins": null,
+      "result": "lost",
+      "profit": -458.62,
+      "bankroll_before": 4984.980000000001
+    },
+    {
+      "date": "2025-12-07",
+      "sport": "NHL",
+      "home": "Washington Capitals",
+      "away": "Columbus Blue Jackets",
+      "pick": "Washington Capitals",
+      "odds": 2.0,
+      "bet_amount": 434.53,
+      "edge_pct": 69.2,
+      "reason": "Tier S",
+      "tier": "S",
+      "form_advantage": 2,
+      "rested_wins": null,
+      "b2b_wins": null,
+      "result": "won",
+      "profit": 434.53,
+      "bankroll_before": 4526.3600000000015
     }
   ],
-  "current_bankroll": 4984.980000000001,
+  "current_bankroll": 4960.890000000001,
   "initial_bankroll": 1000
 }
