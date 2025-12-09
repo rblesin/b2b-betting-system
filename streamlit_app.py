@@ -513,3 +513,4 @@ with tab4:
                 st.metric("Total Profit", f"${total_profit:+,.2f}")
         else:
             st.info("No bets match filters")
+
