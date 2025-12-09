@@ -5,11 +5,10 @@ import os
 
 st.set_page_config(page_title="B2B Betting System", page_icon="🎯", layout="wide")
 
-# Auto-download NBA data if missing (before other imports)
+# Check if NBA data exists
 if not os.path.exists('nba_completed_games_2025.csv'):
-    with st.spinner("Downloading current NBA season data..."):
-        import scrape_current_nba
-        scrape_current_nba.scrape_and_save()
+    st.error("NBA data not found. Please run: python3 scrape_current_nba.py")
+    st.stop()
 
 from scraper import HockeyReferenceScraper
 from nba_scraper import NBAESPNScraper
