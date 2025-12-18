@@ -361,111 +361,139 @@ with tab5:
         
         st.info("""
         **Current Strategy (Based on 10-year backtest):**
-        - Tier S: 68.1% WR (4+ wins, 2+ form advantage)
-        - Tier A: 61.1% WR (4+ wins, 1+ form advantage)  
-        - Tier B: 61.6% WR (2+ form advantage)
-        - Overall: 64.5% WR across 606 games
+        
+        - **Tier S (Elite)**: 68.1% WR
+          - Criteria: 4-5 wins in L5 + 2+ form advantage
+          - Sample: 282 games over 10 years
+          - Significance: 8.6σ above baseline
+        
+        - **Tier A (Good)**: 61.1% WR  
+          - Criteria: 4-5 wins in L5 + 1+ form advantage
+          - Sample: 126 games over 10 years
+          - Significance: 4.3σ above baseline
+        
+        - **Tier B (Decent)**: 61.6% WR
+          - Criteria: 2+ form advantage (any form)
+          - Sample: 198 games over 10 years
+          - Significance: 3.5σ above baseline
+        
+        **Overall**: 64.5% WR across 606 qualifying games (58.4% baseline)
+        
+        ---
+        
+        **💡 Optimization Available:**
+        
+        Based on 10-year analysis, you can improve performance by tightening criteria:
+        
+        - **Optimized Tier A**: 68.0% WR (change to 2+ form advantage)
+        - **Optimized Tier B**: 62.1% WR (change to 3+ form advantage)
+        
+        **Trade-off**: 49% fewer bets, but 1.6% higher overall win rate
+        
+        To switch to optimized strategy, use `config_optimized.py` and `enhanced_analyzer_optimized.py`
         """)
+        
+        st.success("ℹ️ Upload the historical CSV files to see full season-by-season analysis!")
+        
     else:
         st.markdown("""
         Comprehensive 10-year analysis of the B2B betting strategy across all NHL seasons.
         """)
         
         # Current criteria
-    current_criteria = {
-        'min_rested_wins': 4,
-        'min_form_adv_s': 2,
-        'min_form_adv_a': 1,
-        'min_form_adv_b': 2
-    }
-    
-    # Get season-by-season data
-    season_df = hist_analyzer.analyze_by_season(current_criteria)
-    
-    st.subheader("Season-by-Season Performance")
-    
-    # Format the dataframe for display
-    display_df = season_df.copy()
-    display_df['S_WR'] = display_df['S_WR'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-    display_df['A_WR'] = display_df['A_WR'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-    display_df['B_WR'] = display_df['B_WR'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-    display_df['Total_WR'] = display_df['Total_WR'].apply(lambda x: f"{x:.1f}%")
-    
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-    
-    st.divider()
-    
-    # Overall statistics
-    st.subheader("10-Year Aggregated Statistics")
-    
-    overall_stats, _ = hist_analyzer.backtest_criteria(current_criteria)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("**Tier S (Elite)**", "")
-        tier_s = overall_stats['S']
-        st.write(f"**Record:** {tier_s['wins']}-{tier_s['total']-tier_s['wins']}")
-        st.write(f"**Win Rate:** {tier_s['wr']:.1f}%")
-        st.write(f"**Games:** {tier_s['total']}")
-        st.write(f"**Criteria:** {TIERS['S']['criteria']}")
-    
-    with col2:
-        st.metric("**Tier A (Good)**", "")
-        tier_a = overall_stats['A']
-        st.write(f"**Record:** {tier_a['wins']}-{tier_a['total']-tier_a['wins']}")
-        st.write(f"**Win Rate:** {tier_a['wr']:.1f}%")
-        st.write(f"**Games:** {tier_a['total']}")
-        st.write(f"**Criteria:** {TIERS['A']['criteria']}")
-    
-    with col3:
-        st.metric("**Tier B (Decent)**", "")
-        tier_b = overall_stats['B']
-        st.write(f"**Record:** {tier_b['wins']}-{tier_b['total']-tier_b['wins']}")
-        st.write(f"**Win Rate:** {tier_b['wr']:.1f}%")
-        st.write(f"**Games:** {tier_b['total']}")
-        st.write(f"**Criteria:** {TIERS['B']['criteria']}")
-    
-    st.divider()
-    
-    # Statistical significance
-    st.subheader("Statistical Validation")
-    
-    st.markdown("""
-    **Standard Errors and Z-Scores:**
-    - Standard error measures the reliability of our win rate estimates
-    - Z-score shows how many standard deviations above baseline (58.4%) each tier performs
-    - Higher Z-scores indicate more statistically significant edges
-    """)
-    
-    baseline_wr = 58.4
-    
-    sig_data = []
-    for tier_key in ['S', 'A', 'B']:
-        tier = overall_stats[tier_key]
-        if tier['total'] > 0:
-            # Calculate z-score
-            p = tier['wr'] / 100
-            p_baseline = baseline_wr / 100
-            se = tier['std_err'] / 100
-            z_score = (p - p_baseline) / se if se > 0 else 0
-            
-            sig_data.append({
-                'Tier': tier_key,
-                'Win Rate': f"{tier['wr']:.1f}%",
-                'Std Error': f"±{tier['std_err']:.1f}%",
-                'Z-Score': f"{z_score:.1f}σ",
-                'Games': tier['total'],
-                'Significance': '✅ Highly Significant' if z_score > 3 else '✅ Significant' if z_score > 2 else '⚠️ Marginal'
-            })
-    
-    st.table(pd.DataFrame(sig_data))
-    
-    st.info(f"""
-    **Baseline:** Rested vs B2B teams win {baseline_wr}% of the time without any form filters.
-    
-    All three tiers significantly outperform this baseline, with Tier S showing the strongest edge.
-    """)
-
+        current_criteria = {
+            'min_rested_wins': 4,
+            'min_form_adv_s': 2,
+            'min_form_adv_a': 1,
+            'min_form_adv_b': 2
+        }
+        
+        # Get season-by-season data
+        season_df = hist_analyzer.analyze_by_season(current_criteria)
+        
+        st.subheader("Season-by-Season Performance")
+        
+        # Format the dataframe for display
+        display_df = season_df.copy()
+        display_df['S_WR'] = display_df['S_WR'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+        display_df['A_WR'] = display_df['A_WR'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+        display_df['B_WR'] = display_df['B_WR'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+        display_df['Total_WR'] = display_df['Total_WR'].apply(lambda x: f"{x:.1f}%")
+        
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Overall statistics
+        st.subheader("10-Year Aggregated Statistics")
+        
+        overall_stats, _ = hist_analyzer.backtest_criteria(current_criteria)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("**Tier S (Elite)**", "")
+            tier_s = overall_stats['S']
+            st.write(f"**Record:** {tier_s['wins']}-{tier_s['total']-tier_s['wins']}")
+            st.write(f"**Win Rate:** {tier_s['wr']:.1f}%")
+            st.write(f"**Games:** {tier_s['total']}")
+            st.write(f"**Criteria:** {TIERS['S']['criteria']}")
+        
+        with col2:
+            st.metric("**Tier A (Good)**", "")
+            tier_a = overall_stats['A']
+            st.write(f"**Record:** {tier_a['wins']}-{tier_a['total']-tier_a['wins']}")
+            st.write(f"**Win Rate:** {tier_a['wr']:.1f}%")
+            st.write(f"**Games:** {tier_a['total']}")
+            st.write(f"**Criteria:** {TIERS['A']['criteria']}")
+        
+        with col3:
+            st.metric("**Tier B (Decent)**", "")
+            tier_b = overall_stats['B']
+            st.write(f"**Record:** {tier_b['wins']}-{tier_b['total']-tier_b['wins']}")
+            st.write(f"**Win Rate:** {tier_b['wr']:.1f}%")
+            st.write(f"**Games:** {tier_b['total']}")
+            st.write(f"**Criteria:** {TIERS['B']['criteria']}")
+        
+        st.divider()
+        
+        # Statistical significance
+        st.subheader("Statistical Validation")
+        
+        st.markdown("""
+        **Standard Errors and Z-Scores:**
+        - Standard error measures the reliability of our win rate estimates
+        - Z-score shows how many standard deviations above baseline (58.4%) each tier performs
+        - Higher Z-scores indicate more statistically significant edges
+        """)
+        
+        baseline_wr = 58.4
+        
+        sig_data = []
+        for tier_key in ['S', 'A', 'B']:
+            tier = overall_stats[tier_key]
+            if tier['total'] > 0:
+                # Calculate z-score
+                p = tier['wr'] / 100
+                p_baseline = baseline_wr / 100
+                se = tier['std_err'] / 100
+                z_score = (p - p_baseline) / se if se > 0 else 0
+                
+                sig_data.append({
+                    'Tier': tier_key,
+                    'Win Rate': f"{tier['wr']:.1f}%",
+                    'Std Error': f"±{tier['std_err']:.1f}%",
+                    'Z-Score': f"{z_score:.1f}σ",
+                    'Games': tier['total'],
+                    'Significance': '✅ Highly Significant' if z_score > 3 else '✅ Significant' if z_score > 2 else '⚠️ Marginal'
+                })
+        
+        st.table(pd.DataFrame(sig_data))
+        
+        st.info(f"""
+        **Baseline:** Rested vs B2B teams win {baseline_wr}% of the time without any form filters.
+        
+        All three tiers significantly outperform this baseline, with Tier S showing the strongest edge.
+        """)
 st.divider()
 st.caption("NHL B2B Betting System v2.0 | Data: Hockey-Reference.com")
