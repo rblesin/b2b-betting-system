@@ -21,16 +21,19 @@ def load_nhl_data():
 
 @st.cache_data(ttl=86400)  # Cache for 24 hours
 def load_historical_data():
-    """Load historical analyzer"""
-    return HistoricalAnalyzer(
-        'nhl_b2b_games_2015_2025.csv',
-        'nhl_completed_games_2015_2025.csv'
-    )
+    """Load historical analyzer (optional - only if files exist)"""
+    import os
+    if os.path.exists('nhl_b2b_games_2015_2025.csv') and os.path.exists('nhl_completed_games_2015_2025.csv'):
+        return HistoricalAnalyzer(
+            'nhl_b2b_games_2015_2025.csv',
+            'nhl_completed_games_2015_2025.csv'
+        )
+    return None
 
 # Load data
 with st.spinner("Loading data..."):
     nhl_completed, nhl_upcoming, nhl_standings = load_nhl_data()
-    hist_analyzer = load_historical_data()
+    hist_analyzer = load_historical_data()  # May be None if files don't exist
 
 # Initialize
 tracker = BettingTracker()
@@ -345,11 +348,30 @@ with tab4:
 with tab5:
     st.title("📈 Historical Analysis (2015-2025)")
     
-    st.markdown("""
-    Comprehensive 10-year analysis of the B2B betting strategy across all NHL seasons.
-    """)
-    
-    # Current criteria
+    if hist_analyzer is None:
+        st.warning("""
+        📊 **Historical data files not found**
+        
+        To enable this tab, add these files to your repository:
+        - `nhl_b2b_games_2015_2025.csv`
+        - `nhl_completed_games_2015_2025.csv`
+        
+        For now, the system is running with current season data only.
+        """)
+        
+        st.info("""
+        **Current Strategy (Based on 10-year backtest):**
+        - Tier S: 68.1% WR (4+ wins, 2+ form advantage)
+        - Tier A: 61.1% WR (4+ wins, 1+ form advantage)  
+        - Tier B: 61.6% WR (2+ form advantage)
+        - Overall: 64.5% WR across 606 games
+        """)
+    else:
+        st.markdown("""
+        Comprehensive 10-year analysis of the B2B betting strategy across all NHL seasons.
+        """)
+        
+        # Current criteria
     current_criteria = {
         'min_rested_wins': 4,
         'min_form_adv_s': 2,
