@@ -1,8 +1,8 @@
 import pandas as pd
 from config import *
 
-class NBAB2BAnalyzer:
-    """NBA B2B analyzer - HOME RESTED ONLY"""
+class EnhancedB2BAnalyzer:
+    """Multi-tier analyzer with relative form analysis"""
     
     def __init__(self, games_df):
         self.games_df = games_df.copy()
@@ -11,29 +11,31 @@ class NBAB2BAnalyzer:
     
     def classify_tier(self, rested_form, b2b_form, is_home):
         """
-        Classify NBA game into tier
+        Classify game into tier based on absolute and relative form
         
-        CRITICAL: NBA only works for HOME rested teams!
+        OPTIMIZED VERSION (based on 10-year backtest):
+        Tier S: Rested team has 4-5 wins in L5 AND 3+ win advantage
+        Tier A: Rested team has 4-5 wins in L5 AND 2+ win advantage
+        Tier B: Form advantage ≥3 (any form level)
         """
-        if not is_home:
-            return None  # Skip away rested in NBA
-        
         rested_wins = rested_form['wins']
         b2b_wins = b2b_form['wins']
+        
+        # Calculate form advantage
         form_advantage = rested_wins - b2b_wins
         
-        # Tier S: Home rested, 4-5 wins, 2+ advantage
+        # Tier S: 4-5 wins AND 3+ advantage (OPTIMIZED from 2+)
         if rested_wins >= GOOD_FORM_WINS and rested_wins <= 5:
-            if form_advantage >= 2:
+            if form_advantage >= 3:
                 return 'S'
         
-        # Tier A: Home rested, 4-5 wins, 1+ advantage
+        # Tier A: 4-5 wins AND 2+ advantage (OPTIMIZED from 1+)
         if rested_wins >= GOOD_FORM_WINS and rested_wins <= 5:
-            if form_advantage >= 1:
+            if form_advantage >= 2:
                 return 'A'
         
-        # Tier B: Home rested, 2+ advantage
-        if form_advantage >= 2:
+        # Tier B: 3+ advantage (OPTIMIZED from 2+)
+        if form_advantage >= 3:
             return 'B'
         
         return None
@@ -104,16 +106,21 @@ class NBAB2BAnalyzer:
         home_b2b = game.get('home_b2b', False)
         away_b2b = game.get('away_b2b', False)
         
-        # NBA: Only bet on HOME rested
+        # Determine rest advantage
         if not home_b2b and away_b2b:
             rested = home
             b2b = away
             is_home = True
-            scenario = "HOME rested vs Away B2B"
+            scenario = "Rested home vs B2B away"
+        elif home_b2b and not away_b2b:
+            rested = away
+            b2b = home
+            is_home = False
+            scenario = "Rested away vs B2B home"
         else:
-            return self._skip("Not home rested vs away B2B")
+            return self._skip("No rest advantage")
         
-        # Get form
+        # Get current form for BOTH teams
         rested_streak = self.team_streaks.get(rested, {})
         b2b_streak = self.team_streaks.get(b2b, {})
         
@@ -129,7 +136,7 @@ class NBAB2BAnalyzer:
             'streak_type': b2b_streak.get('streak_type', 'none')
         }
         
-        # Classify
+        # Classify into tier using RELATIVE form
         tier = self.classify_tier(rested_form, b2b_form, is_home)
         
         if not tier:
@@ -138,46 +145,47 @@ class NBAB2BAnalyzer:
             return self._skip(reason)
         
         tier_info = TIERS[tier]
+        
+        # Build recommendation
+        rank = standings.get(rested, {}).get('rank', '?')
         form_advantage = rested_form['wins'] - b2b_form['wins']
         
-        rank = standings.get(rested, {}).get('rank', '?')
-        
         factors = {
-            'sport': 'NBA',
+            'sport': 'NHL',
             'tier': f"TIER {tier}: {tier_info['name']}",
             'scenario': scenario,
             'rested_team': f"#{rank} {rested}: {rested_streak.get('last_5', '?')} ({rested_form['wins']} wins)",
             'b2b_team': f"{b2b}: {b2b_streak.get('last_5', '?')} ({b2b_form['wins']} wins)",
             'form_advantage': f"+{form_advantage} win advantage",
-            'criteria': tier_info['nba_criteria']
+            'criteria': tier_info['criteria']
         }
         
         return {
             'should_bet': True,
+            'sport': 'NHL',
             'pick': rested,
             'confidence': tier_info['name'],
             'tier': tier,
             'tier_name': tier_info['name'],
-            'sport': 'NBA',
             'edge': 0,
-            'reason': f"{tier_info['nba_criteria']} (Form advantage: +{form_advantage})",
+            'reason': f"{tier_info['criteria']} (Form advantage: +{form_advantage})",
             'form_advantage': form_advantage,
             'rested_wins': rested_form['wins'],
             'b2b_wins': b2b_form['wins'],
             'analysis': {
                 'factors': factors,
                 'red_flags': [],
-                'green_flags': [f"Form advantage: +{form_advantage}", tier_info['nba_criteria']]
+                'green_flags': [f"Form advantage: +{form_advantage}", tier_info['criteria']]
             }
         }
     
     def _skip(self, reason):
         return {
             'should_bet': False,
+            'sport': 'NHL',
             'pick': None,
             'confidence': 'SKIP',
             'tier': None,
-            'sport': 'NBA',
             'edge': 0,
             'reason': reason,
             'analysis': {'factors': {}, 'red_flags': [reason], 'green_flags': []}

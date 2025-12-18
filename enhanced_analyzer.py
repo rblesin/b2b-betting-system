@@ -156,7 +156,7 @@ class EnhancedB2BAnalyzer:
             'rested_team': f"#{rank} {rested}: {rested_streak.get('last_5', '?')} ({rested_form['wins']} wins)",
             'b2b_team': f"{b2b}: {b2b_streak.get('last_5', '?')} ({b2b_form['wins']} wins)",
             'form_advantage': f"+{form_advantage} win advantage",
-            'criteria': tier_info['nhl_criteria']
+            'criteria': tier_info['criteria']
         }
         
         return {
@@ -167,14 +167,14 @@ class EnhancedB2BAnalyzer:
             'tier': tier,
             'tier_name': tier_info['name'],
             'edge': 0,
-            'reason': f"{tier_info['nhl_criteria']} (Form advantage: +{form_advantage})",
+            'reason': f"{tier_info['criteria']} (Form advantage: +{form_advantage})",
             'form_advantage': form_advantage,
             'rested_wins': rested_form['wins'],
             'b2b_wins': b2b_form['wins'],
             'analysis': {
                 'factors': factors,
                 'red_flags': [],
-                'green_flags': [f"Form advantage: +{form_advantage}", tier_info['nhl_criteria']]
+                'green_flags': [f"Form advantage: +{form_advantage}", tier_info['criteria']]
             }
         }
     
