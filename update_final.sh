@@ -1,4 +1,5 @@
-import streamlit as st
+python3 << 'EOF'
+content = '''import streamlit as st
 import pandas as pd
 import os
 
@@ -133,3 +134,17 @@ if completed_bets:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 else:
     st.info("No bets this season")
+'''
+
+with open('streamlit_app.py', 'w') as f:
+    f.write(content)
+
+print("✅ Updated to FINAL simple version")
+print("")
+print("Layout:")
+print("  1. Win Rates (3 metrics)")
+print("  2. ALL B2B Games table (with BET/SKIP status)")
+print("  3. Betting History")
+print("")
+print("Removed: Tabs, sidebar, bankroll, unnecessary complexity")
+EOF
