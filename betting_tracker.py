@@ -26,7 +26,7 @@ class BettingTracker:
                 'initial_bankroll': self.initial_bankroll
             }, f, indent=2, default=str)
     
-    def calculate_kelly_bet(self, win_rate_pct, odds=DEFAULT_ODDS):
+    def calculate_kelly_bet(self, win_rate_pct, odds=2.0):
         """
         Calculate Kelly bet size with $1,000 cap
         
