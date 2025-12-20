@@ -29,47 +29,55 @@ completed, upcoming, standings, scraper = load_data()
 tracker = BettingTracker()
 analyzer = EnhancedB2BAnalyzer(completed, scraper)
 
-# Title
 st.title("🏒 NHL Back-to-Back System")
 
 # Win Rates
 st.header("Win Rates")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 baseline = get_baseline()
-summary = tracker.get_summary(sport='NHL')
-our_wr = summary['win_rate'] if summary['total_bets'] > 0 else 67.9
+
+# Calculate S+A only
+nhl_bets = [b for b in tracker.bets if b.get('sport') == 'NHL' and b['result'] != 'pending']
+sa_bets = [b for b in nhl_bets if b.get('tier') in ['S', 'A']]
+if sa_bets:
+    sa_wins = sum(1 for b in sa_bets if b['result'] == 'won')
+    current_wr = sa_wins / len(sa_bets) * 100
+    record = f"{sa_wins}-{len(sa_bets)-sa_wins}"
+else:
+    current_wr = 0
+    record = "No bets yet"
+
+historical_wr = 67.9
 
 with col1:
     st.metric("Baseline", f"{baseline:.1f}%")
-    st.caption("Rested vs B2B (10yr)")
+    st.caption("Any rested vs B2B")
 with col2:
-    st.metric("Our Strategy", f"{our_wr:.1f}%")
-    st.caption(f"{summary['wins']}-{summary['losses']}" if summary['total_bets'] > 0 else "67.9% (10yr avg)")
+    st.metric("Historical", f"{historical_wr:.1f}%")
+    st.caption("2-tier (10yr)")
 with col3:
-    st.metric("Edge", f"+{our_wr - baseline:.1f}%")
-    st.caption("Improvement")
+    st.metric("This Season", f"{current_wr:.1f}%" if current_wr > 0 else "0.0%")
+    st.caption(record)
+with col4:
+    display_wr = current_wr if current_wr > 0 else historical_wr
+    st.metric("Edge", f"+{display_wr - baseline:.1f}%")
+    st.caption("vs Baseline")
 
-# Strategy
 with st.expander("📖 Strategy"):
     st.markdown("""
     **Tier S** (68.2%): Rested 4-5 wins + 3+ advantage
     **Tier A** (67.5%): Rested 4-5 wins + 2+ advantage
     
     **Pro Enhancements:**
-    - 🥅 B2B backup goalie → Upgrades A to S
-    - 🏥 Rested 2+ injuries → SKIP bet
-    
-    _(Tier B removed - only 57.7%)_
+    - 🥅 B2B backup goalie → Upgrades A → S
+    - 🏥 Rested 2+ injuries → SKIP
     """)
 
 st.divider()
-
-# Main section - ALL B2B GAMES
 st.header("All Back-to-Back Games")
 
 all_b2b = []
-
 for _, game in upcoming.iterrows():
     home_b2b = game.get('home_rest', 999) == 1
     away_b2b = game.get('away_rest', 999) == 1
@@ -79,7 +87,7 @@ for _, game in upcoming.iterrows():
         b2b = game['away'] if not home_b2b else game['home']
         
         rec = analyzer.should_bet(
-            {'home': game['home'], 'away': game['away'], 'home_b2b': home_b2b, 'away_b2b': away_b2b},
+            {'home': game['home'], 'away': game['away'], 'home_b2b': home_b2b, 'away_b2b': away_b2b, 'date': game.get('date')},
             {}, standings
         )
         
@@ -89,11 +97,9 @@ for _, game in upcoming.iterrows():
         if rec['should_bet']:
             status = f"✅ BET ({rec['tier']})"
             reason = TIERS[rec['tier']]['criteria']
-            
-            # Add enhancement indicators
             if rec.get('enhancements'):
-                for enhancement in rec['enhancements']:
-                    reason += f" • {enhancement}"
+                for e in rec['enhancements']:
+                    reason += f" • {e}"
         else:
             status = "⏭️ SKIP"
             reason = rec.get('reason', 'Does not meet criteria')
@@ -111,28 +117,19 @@ for _, game in upcoming.iterrows():
         })
 
 if all_b2b:
-    df = pd.DataFrame(all_b2b)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    
+    st.dataframe(pd.DataFrame(all_b2b), use_container_width=True, hide_index=True)
     bet_count = len([x for x in all_b2b if 'BET' in x['Status']])
-    st.caption(f"Showing {len(all_b2b)} B2B games ({bet_count} qualify for betting)")
+    st.caption(f"{len(all_b2b)} B2B games ({bet_count} qualify)")
 else:
     st.info("No B2B games found")
 
 st.divider()
-
-# History
 st.header("Betting History (2025-26)")
 
-nhl_bets = [b for b in tracker.bets if b.get('sport') == 'NHL']
-completed_bets = [b for b in nhl_bets if b['result'] != 'pending']
-
-if completed_bets:
-    wins = sum(1 for b in completed_bets if b['result'] == 'won')
-    st.metric("Record", f"{wins}-{len(completed_bets)-wins} ({wins/len(completed_bets)*100:.1f}%)")
-    
+if sa_bets:
+    st.metric("Record", f"{record} ({current_wr:.1f}%)")
     rows = []
-    for bet in reversed(completed_bets):
+    for bet in reversed(sa_bets):
         rows.append({
             'Date': bet['date'],
             '': '✅' if bet['result'] == 'won' else '❌',
@@ -142,4 +139,4 @@ if completed_bets:
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 else:
-    st.info("No bets this season")
+    st.info("No S or A tier bets this season")
