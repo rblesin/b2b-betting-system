@@ -2,7 +2,7 @@ import pandas as pd
 from config import *
 
 class EnhancedB2BAnalyzer:
-    """Multi-tier analyzer with relative form analysis"""
+    """TWO-TIER analyzer: 67.9% WR (removed Tier B)"""
     
     def __init__(self, games_df):
         self.games_df = games_df.copy()
@@ -11,31 +11,27 @@ class EnhancedB2BAnalyzer:
     
     def classify_tier(self, rested_form, b2b_form, is_home):
         """
-        Classify game into tier based on absolute and relative form
+        TWO-TIER classification (67.9% overall WR):
         
-        Tier S: Rested team has 4-5 wins in L5 AND 2+ win advantage
-        Tier A: Rested team has 4-5 wins in L5 AND 1+ win advantage
-        Tier B: Form advantage ≥2 (any form level)
+        Tier S: Rested 4-5 wins + 3+ advantage → 68.2% WR
+        Tier A: Rested 4-5 wins + 2+ advantage → 67.5% WR
+        (Tier B removed - was only 57.7%)
         """
         rested_wins = rested_form['wins']
         b2b_wins = b2b_form['wins']
-        
-        # Calculate form advantage
         form_advantage = rested_wins - b2b_wins
         
-        # Tier S: 4-5 wins AND 2+ advantage
-        if rested_wins >= GOOD_FORM_WINS and rested_wins <= 5:
-            if form_advantage >= 2:
-                return 'S'
+        # Must have 4-5 wins in last 5
+        if rested_wins < GOOD_FORM_WINS or rested_wins > 5:
+            return None
         
-        # Tier A: 4-5 wins AND 1+ advantage
-        if rested_wins >= GOOD_FORM_WINS and rested_wins <= 5:
-            if form_advantage >= 1:
-                return 'A'
+        # Tier S: 3+ advantage
+        if form_advantage >= 3:
+            return 'S'
         
-        # Tier B: 2+ advantage (any form)
+        # Tier A: 2+ advantage
         if form_advantage >= 2:
-            return 'B'
+            return 'A'
         
         return None
     
@@ -119,7 +115,7 @@ class EnhancedB2BAnalyzer:
         else:
             return self._skip("No rest advantage")
         
-        # Get current form for BOTH teams
+        # Get form for BOTH teams
         rested_streak = self.team_streaks.get(rested, {})
         b2b_streak = self.team_streaks.get(b2b, {})
         
@@ -135,7 +131,7 @@ class EnhancedB2BAnalyzer:
             'streak_type': b2b_streak.get('streak_type', 'none')
         }
         
-        # Classify into tier using RELATIVE form
+        # Classify using TWO-TIER system
         tier = self.classify_tier(rested_form, b2b_form, is_home)
         
         if not tier:
@@ -144,8 +140,6 @@ class EnhancedB2BAnalyzer:
             return self._skip(reason)
         
         tier_info = TIERS[tier]
-        
-        # Build recommendation
         rank = standings.get(rested, {}).get('rank', '?')
         form_advantage = rested_form['wins'] - b2b_form['wins']
         

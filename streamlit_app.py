@@ -38,14 +38,14 @@ col1, col2, col3 = st.columns(3)
 
 baseline = get_baseline()
 summary = tracker.get_summary(sport='NHL')
-our_wr = summary['win_rate'] if summary['total_bets'] > 0 else 64.5
+our_wr = summary['win_rate'] if summary['total_bets'] > 0 else 67.9
 
 with col1:
     st.metric("Baseline", f"{baseline:.1f}%")
     st.caption("Rested vs B2B (10yr)")
 with col2:
     st.metric("Our Strategy", f"{our_wr:.1f}%")
-    st.caption(f"{summary['wins']}-{summary['losses']}" if summary['total_bets'] > 0 else "64.5% (10yr avg)")
+    st.caption(f"{summary['wins']}-{summary['losses']}" if summary['total_bets'] > 0 else "67.9% (10yr avg)")
 with col3:
     st.metric("Edge", f"+{our_wr - baseline:.1f}%")
     st.caption("Improvement")
@@ -53,9 +53,10 @@ with col3:
 # Strategy
 with st.expander("📖 Strategy"):
     st.markdown("""
-    **Tier S** (68.1%): Rested 4-5 wins + 2+ advantage
-    **Tier A** (61.1%): Rested 4-5 wins + 1+ advantage  
-    **Tier B** (61.6%): Rested any + 2+ advantage
+    **Tier S** (68.2%): Rested 4-5 wins + 3+ advantage
+    **Tier A** (67.5%): Rested 4-5 wins + 2+ advantage
+    
+    _(Tier B removed - only 57.7% vs 58.4% baseline)_
     """)
 
 st.divider()
