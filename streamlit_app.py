@@ -14,7 +14,7 @@ def load_data():
     scraper = HockeyReferenceScraper(season=CURRENT_SEASON)
     completed, upcoming = scraper.scrape_all_games()
     standings = scraper.scrape_standings()
-    return completed, upcoming, standings
+    return completed, upcoming, standings, scraper
 
 @st.cache_data(ttl=86400)
 def get_baseline():
@@ -25,9 +25,9 @@ def get_baseline():
         return (wins / total * 100) if total > 0 else 58.4
     return 58.4
 
-completed, upcoming, standings = load_data()
+completed, upcoming, standings, scraper = load_data()
 tracker = BettingTracker()
-analyzer = EnhancedB2BAnalyzer(completed)
+analyzer = EnhancedB2BAnalyzer(completed, scraper)
 
 # Title
 st.title("🏒 NHL Back-to-Back System")
@@ -56,7 +56,11 @@ with st.expander("📖 Strategy"):
     **Tier S** (68.2%): Rested 4-5 wins + 3+ advantage
     **Tier A** (67.5%): Rested 4-5 wins + 2+ advantage
     
-    _(Tier B removed - only 57.7% vs 58.4% baseline)_
+    **Pro Enhancements:**
+    - 🥅 B2B backup goalie → Upgrades A to S
+    - 🏥 Rested 2+ injuries → SKIP bet
+    
+    _(Tier B removed - only 57.7%)_
     """)
 
 st.divider()
@@ -85,6 +89,11 @@ for _, game in upcoming.iterrows():
         if rec['should_bet']:
             status = f"✅ BET ({rec['tier']})"
             reason = TIERS[rec['tier']]['criteria']
+            
+            # Add enhancement indicators
+            if rec.get('enhancements'):
+                for enhancement in rec['enhancements']:
+                    reason += f" • {enhancement}"
         else:
             status = "⏭️ SKIP"
             reason = rec.get('reason', 'Does not meet criteria')

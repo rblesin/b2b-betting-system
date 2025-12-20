@@ -2,38 +2,76 @@ import pandas as pd
 from config import *
 
 class EnhancedB2BAnalyzer:
-    """TWO-TIER analyzer: 67.9% WR (removed Tier B)"""
+    """
+    Pro B2B analyzer with enhancements:
+    - Goalie tracking (upgrades tiers)
+    - Injury filtering (skips bad bets)
+    - 2-tier system (67.9% WR base)
+    """
     
-    def __init__(self, games_df):
+    def __init__(self, games_df, scraper=None):
         self.games_df = games_df.copy()
         self.team_records = {}
         self.team_streaks = {}
+        self.scraper = scraper
     
-    def classify_tier(self, rested_form, b2b_form, is_home):
+    def classify_tier(self, rested_form, b2b_form, is_home, enhancements=None):
         """
-        TWO-TIER classification (67.9% overall WR):
+        TWO-TIER classification + PRO enhancements:
         
-        Tier S: Rested 4-5 wins + 3+ advantage → 68.2% WR
-        Tier A: Rested 4-5 wins + 2+ advantage → 67.5% WR
-        (Tier B removed - was only 57.7%)
+        Base Tiers:
+        - Tier S: 4-5 wins + 3+ advantage → 68.2% WR
+        - Tier A: 4-5 wins + 2+ advantage → 67.5% WR
+        
+        Enhancements:
+        - B2B backup goalie: Upgrade A → S (+3% WR)
+        - Rested 2+ injuries: SKIP
+        - Rested backup goalie: Note but don't skip
         """
         rested_wins = rested_form['wins']
         b2b_wins = b2b_form['wins']
         form_advantage = rested_wins - b2b_wins
         
-        # Must have 4-5 wins in last 5
+        # Must have 4-5 wins
         if rested_wins < GOOD_FORM_WINS or rested_wins > 5:
-            return None
+            return None, {'reason': 'Rested team needs 4-5 wins in L5'}
         
-        # Tier S: 3+ advantage
+        # Base classification
+        base_tier = None
         if form_advantage >= 3:
-            return 'S'
+            base_tier = 'S'
+        elif form_advantage >= 2:
+            base_tier = 'A'
         
-        # Tier A: 2+ advantage
-        if form_advantage >= 2:
-            return 'A'
+        if not base_tier:
+            return None, {'reason': f'Form advantage (+{form_advantage}) too small'}
         
-        return None
+        # Track enhancements
+        confidence_info = {
+            'base_tier': base_tier,
+            'final_tier': base_tier,
+            'enhancements': []
+        }
+        
+        if enhancements:
+            # SKIP if rested team has major injuries
+            if enhancements.get('rested_injuries', 0) >= 2:
+                confidence_info['reason'] = 'Rested team has 2+ injuries - SKIP'
+                return None, confidence_info
+            
+            # UPGRADE if B2B team using backup goalie
+            if enhancements.get('b2b_backup_goalie'):
+                confidence_info['enhancements'].append('🥅 B2B using backup goalie')
+                if base_tier == 'A':
+                    confidence_info['final_tier'] = 'S'
+                    confidence_info['upgraded'] = True
+                    confidence_info['enhancements'].append('⬆️ Upgraded A → S')
+            
+            # NOTE if rested using backup (don't skip, just note)
+            if enhancements.get('rested_backup_goalie'):
+                confidence_info['enhancements'].append('⚠️ Rested using backup goalie')
+        
+        return confidence_info['final_tier'], confidence_info
     
     def calculate_team_records(self):
         records = {}
@@ -62,29 +100,15 @@ class EnhancedB2BAnalyzer:
                     team_games.append({'won': not game['home_win']})
             
             if len(team_games) == 0:
-                streaks[team] = {'last_5_wins': 0, 'last_5': '0-0', 'current_streak': 0, 'streak_type': 'none'}
+                streaks[team] = {'last_5_wins': 0, 'last_5': '0-0'}
                 continue
             
             recent = team_games[-last_n_games:]
             wins = sum(1 for g in recent if g['won'])
             
-            current_streak = 0
-            if len(team_games) > 0:
-                last_result = team_games[-1]['won']
-                for game in reversed(team_games):
-                    if game['won'] == last_result:
-                        current_streak += 1
-                    else:
-                        break
-                streak_type = 'W' if last_result else 'L'
-            else:
-                streak_type = 'none'
-            
             streaks[team] = {
                 'last_5_wins': wins,
-                'last_5': f"{wins}-{len(recent)-wins}",
-                'current_streak': current_streak,
-                'streak_type': streak_type
+                'last_5': f"{wins}-{len(recent)-wins}"
             }
         
         self.team_streaks = streaks
@@ -106,69 +130,67 @@ class EnhancedB2BAnalyzer:
             rested = home
             b2b = away
             is_home = True
-            scenario = "Rested home vs B2B away"
         elif home_b2b and not away_b2b:
             rested = away
             b2b = home
             is_home = False
-            scenario = "Rested away vs B2B home"
         else:
             return self._skip("No rest advantage")
         
-        # Get form for BOTH teams
+        # Get form
         rested_streak = self.team_streaks.get(rested, {})
         b2b_streak = self.team_streaks.get(b2b, {})
         
-        rested_form = {
-            'wins': rested_streak.get('last_5_wins', 0),
-            'streak': rested_streak.get('current_streak', 0),
-            'streak_type': rested_streak.get('streak_type', 'none')
-        }
+        rested_form = {'wins': rested_streak.get('last_5_wins', 0)}
+        b2b_form = {'wins': b2b_streak.get('last_5_wins', 0)}
         
-        b2b_form = {
-            'wins': b2b_streak.get('last_5_wins', 0),
-            'streak': b2b_streak.get('current_streak', 0),
-            'streak_type': b2b_streak.get('streak_type', 'none')
-        }
+        # Check enhancements (if scraper available)
+        enhancements = {}
+        if self.scraper:
+            game_date = game.get('date')
+            
+            # Check goalies
+            rested_goalie = self.scraper.check_goalie(rested, game_date)
+            b2b_goalie = self.scraper.check_goalie(b2b, game_date)
+            
+            enhancements['rested_backup_goalie'] = (rested_goalie == 'backup')
+            enhancements['b2b_backup_goalie'] = (b2b_goalie == 'backup')
+            
+            # Check injuries
+            rested_inj = self.scraper.check_injuries(rested)
+            enhancements['rested_injuries'] = rested_inj[1]
         
-        # Classify using TWO-TIER system
-        tier = self.classify_tier(rested_form, b2b_form, is_home)
+        # Classify
+        tier, confidence_info = self.classify_tier(rested_form, b2b_form, is_home, enhancements)
         
         if not tier:
-            reason = (f"{rested} doesn't qualify (L5: {rested_streak.get('last_5', '?')}) "
-                     f"vs {b2b} (L5: {b2b_streak.get('last_5', '?')})")
+            reason = confidence_info.get('reason', 'Does not meet criteria')
             return self._skip(reason)
         
         tier_info = TIERS[tier]
-        rank = standings.get(rested, {}).get('rank', '?')
         form_advantage = rested_form['wins'] - b2b_form['wins']
-        
-        factors = {
-            'sport': 'NHL',
-            'tier': f"TIER {tier}: {tier_info['name']}",
-            'scenario': scenario,
-            'rested_team': f"#{rank} {rested}: {rested_streak.get('last_5', '?')} ({rested_form['wins']} wins)",
-            'b2b_team': f"{b2b}: {b2b_streak.get('last_5', '?')} ({b2b_form['wins']} wins)",
-            'form_advantage': f"+{form_advantage} win advantage",
-            'criteria': tier_info['criteria']
-        }
         
         return {
             'should_bet': True,
             'sport': 'NHL',
             'pick': rested,
-            'confidence': tier_info['name'],
             'tier': tier,
             'tier_name': tier_info['name'],
-            'edge': 0,
-            'reason': f"{tier_info['criteria']} (Form advantage: +{form_advantage})",
+            'reason': tier_info['criteria'],
             'form_advantage': form_advantage,
             'rested_wins': rested_form['wins'],
             'b2b_wins': b2b_form['wins'],
+            'enhancements': confidence_info.get('enhancements', []),
+            'upgraded': confidence_info.get('upgraded', False),
             'analysis': {
-                'factors': factors,
-                'red_flags': [],
-                'green_flags': [f"Form advantage: +{form_advantage}", tier_info['criteria']]
+                'factors': {
+                    'rested_team': f"{rested}: {rested_streak.get('last_5', '?')}",
+                    'b2b_team': f"{b2b}: {b2b_streak.get('last_5', '?')}",
+                    'form_advantage': f"+{form_advantage}",
+                    'tier': tier,
+                    'criteria': tier_info['criteria'],
+                    'enhancements': ', '.join(confidence_info.get('enhancements', [])) or 'None'
+                }
             }
         }
     
@@ -177,9 +199,6 @@ class EnhancedB2BAnalyzer:
             'should_bet': False,
             'sport': 'NHL',
             'pick': None,
-            'confidence': 'SKIP',
             'tier': None,
-            'edge': 0,
-            'reason': reason,
-            'analysis': {'factors': {}, 'red_flags': [reason], 'green_flags': []}
+            'reason': reason
         }

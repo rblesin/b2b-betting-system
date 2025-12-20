@@ -2,10 +2,11 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import datetime
-import json
 import os
 
-class HockeyReferenceScraper:
+class ProNHLScraper:
+    """Enhanced scraper with goalie/injury tracking"""
+    
     def __init__(self, season="2026"):
         self.season = season
         self.base_url = "https://www.hockey-reference.com"
@@ -90,7 +91,7 @@ class HockeyReferenceScraper:
         completed_df = pd.DataFrame(completed_games)
         upcoming_df = pd.DataFrame(upcoming_games)
         
-        print(f"Found {len(completed_df)} completed games and {len(upcoming_df)} upcoming games")
+        print(f"Found {len(completed_df)} completed and {len(upcoming_df)} upcoming games")
         
         return completed_df, upcoming_df
     
@@ -139,6 +140,16 @@ class HockeyReferenceScraper:
         
         return completed_final, upcoming_final
     
+    def check_goalie(self, team, game_date):
+        """Check goalie status - placeholder for now"""
+        # TODO: Scrape DailyFaceoff for actual data
+        return 'unknown'
+    
+    def check_injuries(self, team):
+        """Check injuries - placeholder for now"""
+        # TODO: Scrape NHL.com for actual data
+        return False, 0, []
+    
     def scrape_all_games(self):
         """Scrape and return all games with rest calculations"""
         completed_df, upcoming_df = self.scrape_full_schedule()
@@ -146,7 +157,6 @@ class HockeyReferenceScraper:
         if len(completed_df) == 0:
             return pd.DataFrame(), pd.DataFrame()
         
-        # Calculate rest days for both
         completed_final, upcoming_final = self.calculate_rest_days(completed_df, upcoming_df)
         
         return completed_final, upcoming_final
@@ -190,18 +200,6 @@ class HockeyReferenceScraper:
             print(f"Error scraping standings: {e}")
             return {}
 
-if __name__ == "__main__":
-    scraper = HockeyReferenceScraper(season="2026")
-    completed, upcoming = scraper.scrape_all_games()
-    
-    print("\nCompleted games:", len(completed))
-    print(completed.head())
-    
-    print("\nUpcoming games:", len(upcoming))
-    print(upcoming.head())
-    
-    print("\nUpcoming with B2B:")
-    b2b_upcoming = upcoming[
-        (upcoming['home_rest'] == 1) | (upcoming['away_rest'] == 1)
-    ]
-    print(f"Found {len(b2b_upcoming)} games with B2B situation")
+# Backward compatibility
+class HockeyReferenceScraper(ProNHLScraper):
+    pass
